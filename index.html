@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Visor AR 3D · STL OBJ GLB</title>
+<style>
+:root{--bg:#14110f;--pn:rgba(24,20,17,.82);--ln:rgba(255,235,210,.16);--tx:#f4ece2;--mu:#a89c8e;--ac:#ffb347;--ac2:#4fd1c5}
+*{box-sizing:border-box;margin:0}
+html,body{height:100%;overflow:hidden;background:#000;color:var(--tx);font:14px/1.4 "Trebuchet MS","Segoe UI",system-ui,sans-serif;-webkit-user-select:none;user-select:none}
+video,canvas{position:fixed;top:0;left:0;width:100%;height:100%;object-fit:cover}
+#v2{display:none}.vr #v1{width:50%}.vr #v2{display:block;left:50%;width:50%}
+#ov{pointer-events:none}
+#gl{touch-action:none}
+.glass{background:var(--pn);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border:1px solid var(--ln);border-radius:14px}
+#chip{position:fixed;top:max(10px,env(safe-area-inset-top));left:50%;transform:translateX(-50%);padding:6px 14px;border-radius:99px;font-size:13px;white-space:nowrap}
+#chip b{color:var(--ac)}
+#bar{position:fixed;bottom:max(12px,env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);display:flex;gap:6px;padding:6px;max-width:96vw}
+button,.btn{font:inherit;color:var(--tx);background:transparent;border:1px solid transparent;border-radius:10px;padding:9px 12px;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+button:hover,.btn:hover{background:rgba(255,255,255,.08)}
+button:focus-visible,.btn:focus-visible,input:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
+button.on{background:var(--ac);color:#241a0c;font-weight:700}
+#panel{position:fixed;top:max(10px,env(safe-area-inset-top));right:10px;width:288px;max-height:calc(100% - 100px);overflow:auto;padding:14px;display:none}
+#panel.open{display:block}
+#panel h3{font-size:12px;color:var(--mu);font-weight:600;margin:14px 0 6px;letter-spacing:.02em}
+#panel h3:first-child{margin-top:0}
+.seg{display:grid;grid-template-columns:repeat(3,1fr);gap:4px}
+.seg button{border:1px solid var(--ln);padding:7px 4px;justify-content:center;font-size:13px}
+.row{display:flex;align-items:center;gap:8px;margin:6px 0}
+.row label{flex:0 0 74px;color:var(--mu);font-size:13px}
+.row input[type=range]{flex:1;accent-color:var(--ac)}
+.chk{display:flex;gap:8px;align-items:center;margin:6px 0;cursor:pointer}
+.chk input{accent-color:var(--ac);width:16px;height:16px}
+.sw{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.sw i{width:26px;height:26px;border-radius:50%;border:2px solid var(--ln);cursor:pointer}
+input[type=color]{width:34px;height:28px;border:0;background:none;padding:0}
+#intro{position:fixed;inset:0;background:radial-gradient(120% 90% at 50% 0,#3a2a18,var(--bg));display:flex;align-items:center;justify-content:center;padding:20px;z-index:9}
+#intro .card{max-width:420px;padding:28px}
+#intro h1{font-size:30px;line-height:1.1;margin-bottom:10px;letter-spacing:-.01em}
+#intro p{color:var(--mu);margin-bottom:8px}
+#intro .go{display:flex;gap:8px;margin-top:18px;flex-wrap:wrap}
+#intro .go button{border:1px solid var(--ln)}
+#intro .go .main{background:var(--ac);color:#241a0c;font-weight:700;border-color:var(--ac)}
+#toast{position:fixed;top:54px;left:50%;transform:translateX(-50%);padding:8px 14px;border-radius:10px;display:none;max-width:90vw;font-size:13px;z-index:8}
+#exit{position:fixed;top:8px;left:50%;transform:translateX(-50%);display:none;z-index:7;padding:6px 14px;border:1px solid var(--ln);background:rgba(0,0,0,.5);border-radius:99px}
+.vr #exit{display:block}.vr #bar,.vr #panel,.vr #chip{display:none!important}
+</style></head><body>
+<video id="v1" playsinline muted autoplay></video><video id="v2" playsinline muted autoplay></video>
+<canvas id="gl"></canvas><canvas id="ov"></canvas>
+
+<div id="chip" class="glass">Arrastra para rotar · rueda para escalar</div>
+<div id="toast" class="glass"></div>
+<button id="exit">Salir de VR</button>
+
+<div id="panel" class="glass">
+ <h3>Visualización</h3>
+ <div class="seg" id="modes">
+  <button data-m="solid" class="on">Sólido</button><button data-m="wire">Malla</button><button data-m="both">Sólido + malla</button>
+  <button data-m="mirror">Espejo</button><button data-m="orig">Original</button>
+ </div>
+ <h3>Color</h3>
+ <div class="sw" id="sw"><input type="color" id="color" value="#38e8c6" aria-label="Color"></div>
+ <h3>Material</h3>
+ <div class="row"><label>Rugosidad</label><input type="range" id="rough" min="0" max="1" step=".01" value=".35"></div>
+ <div class="row"><label>Metal</label><input type="range" id="metal" min="0" max="1" step=".01" value=".2"></div>
+ <label class="chk"><input type="checkbox" id="flat"> Caras planas (facetado)</label>
+ <h3>Luz y escena</h3>
+ <div class="row"><label>Intensidad</label><input type="range" id="light" min="0" max="4" step=".05" value="1.6"></div>
+ <div class="row"><label>Dirección</label><input type="range" id="ang" min="0" max="360" value="45"></div>
+ <div class="row"><label>Escala</label><input type="range" id="scl" min=".2" max="3" step=".01" value="1"></div>
+ <label class="chk"><input type="checkbox" id="shadow" checked> Sombra sobre el suelo</label>
+ <label class="chk"><input type="checkbox" id="auto"> Giro automático</label>
+ <h3>Cámara y VR</h3>
+ <div class="row"><button id="flip" style="border:1px solid var(--ln)">Cambiar cámara</button></div>
+ <label class="chk"><input type="checkbox" id="mirror"> Espejar imagen</label>
+ <label class="chk"><input type="checkbox" id="gyro"> Anclar al mundo (giroscopio)</label>
+ <div class="row"><label>Separación</label><input type="range" id="ipd" min="0" max=".4" step=".005" value=".12"></div>
+</div>
+
+<nav id="bar" class="glass">
+ <label class="btn" for="file">📂 Modelo</label><input type="file" id="file" accept=".stl,.obj,.glb,.gltf" hidden>
+ <button id="bCam">📷 Cámara</button>
+ <button id="bMan">✋ Manipulación</button>
+ <button id="bVr">🥽 VR</button>
+ <button id="bPan">⚙ Ajustes</button>
+</nav>
+
+<div id="intro"><div class="card glass">
+ <h1>Visor AR para modelos 3D</h1>
+ <p>Abre archivos STL, OBJ o GLB y colócalos en tu entorno con la cámara.</p>
+ <p>Activa <b>Manipulación</b> para mover y girar el modelo con tus manos, o <b>VR</b> para usar gafas tipo Cardboard.</p>
+ <div class="go"><button class="main" id="goAR">Iniciar con cámara</button><button id="goNo">Solo visor</button></div>
+</div></div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/STLLoader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/OBJLoader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+<script>
+const $=s=>document.querySelector(s),v1=$('#v1'),v2=$('#v2'),ov=$('#ov'),ox=ov.getContext('2d');
+const st={mode:'solid',color:'#38e8c6',rough:.35,metal:.2,flat:false,light:1.6,ang:45,shadow:true,auto:false,mirror:false,manip:false,vr:false,gyro:false,ipd:.12,facing:'environment'};
+let W=innerWidth,H=innerHeight,stream=null,hands=null,busy=false;
+
+/* ---------- Escena ---------- */
+const R=new THREE.WebGLRenderer({canvas:$('#gl'),antialias:true,alpha:true});
+R.shadowMap.enabled=true;R.shadowMap.type=THREE.PCFSoftShadowMap;R.toneMapping=THREE.ACESFilmicToneMapping;R.outputEncoding=THREE.sRGBEncoding;R.setClearColor(0,0);
+const scene=new THREE.Scene(),cam=new THREE.PerspectiveCamera(50,1,.1,60);cam.position.set(0,0,3);
+const sun=new THREE.DirectionalLight(0xffffff,1.6);sun.castShadow=true;sun.shadow.mapSize.set(1024,1024);sun.shadow.bias=-.0006;
+Object.assign(sun.shadow.camera,{left:-2.5,right:2.5,top:2.5,bottom:-2.5,far:14});
+scene.add(sun,new THREE.HemisphereLight(0xffffff,0x556677,.6));
+const floor=new THREE.Mesh(new THREE.PlaneGeometry(14,14),new THREE.ShadowMaterial({opacity:.5}));
+floor.rotation.x=-Math.PI/2;floor.position.y=-.9;floor.receiveShadow=true;scene.add(floor);
+const pivot=new THREE.Group();scene.add(pivot);let model=null;const orig=new Map();
+
+/* Entorno para reflejos: degradado + cámara real */
+const ec=document.createElement('canvas');ec.width=512;ec.height=256;const ex=ec.getContext('2d');
+const pm=new THREE.PMREMGenerator(R);let envRT=null,lastEnv=0;
+function updEnv(){
+ const g=ex.createLinearGradient(0,0,0,256);[[0,'#8fb8ff'],[.48,'#ffffff'],[.52,'#6b6b6b'],[1,'#1c1c1c']].forEach(a=>g.addColorStop(a[0],a[1]));
+ ex.fillStyle=g;ex.fillRect(0,0,512,256);
+ if(stream&&v1.readyState>1){ex.globalAlpha=.9;ex.drawImage(v1,0,48,512,160);ex.globalAlpha=1}
+ ex.fillStyle='#fff';[[50,40],[240,30],[400,50]].forEach(p=>ex.fillRect(p[0],p[1],72,26));
+ const t=new THREE.CanvasTexture(ec);t.mapping=THREE.EquirectangularReflectionMapping;t.encoding=THREE.sRGBEncoding;
+ const rt=pm.fromEquirectangular(t);t.dispose();if(envRT)envRT.dispose();envRT=rt;scene.environment=rt.texture;
+}
+
+/* ---------- Materiales y modos ---------- */
+function applyMode(){
+ if(!model)return;
+ model.traverse(o=>{
+  if(!o.isMesh||o.userData.isWire)return;
+  o.castShadow=o.receiveShadow=true;
+  if(o.userData.wire){o.remove(o.userData.wire);o.userData.wire.material.dispose();o.userData.wire=null}
+  if(o.material&&!orig.has(o)||(o.material!==orig.get(o)))o.material.dispose&&o.material!==orig.get(o)&&o.material.dispose();
+  const m=st.mode;
+  if(m==='orig'&&orig.has(o)){o.material=orig.get(o);return}
+  const c=new THREE.Color(st.color),mat=new THREE.MeshStandardMaterial({color:c,roughness:st.rough,metalness:st.metal,flatShading:st.flat,side:THREE.DoubleSide,envMapIntensity:.7});
+  if(m==='wire'){mat.wireframe=true;mat.emissive=c.clone();mat.emissiveIntensity=.7}
+  if(m==='mirror'){mat.color.lerp(new THREE.Color(1,1,1),.65);mat.metalness=1;mat.roughness=Math.min(st.rough,.12)*.5;mat.envMapIntensity=2}
+  if(m==='both'){mat.polygonOffset=true;mat.polygonOffsetFactor=1;mat.polygonOffsetUnits=1;
+   const w=new THREE.Mesh(o.geometry,new THREE.MeshBasicMaterial({color:0xffffff,wireframe:true,transparent:true,opacity:.35}));
+   w.userData.isWire=true;o.add(w);o.userData.wire=w}
+  o.material=mat;
+ });
+}
+function setModel(obj){
+ if(model)pivot.remove(model);orig.clear();
+ obj.traverse(o=>{if(o.isMesh){if(!o.geometry.attributes.normal)o.geometry.computeVertexNormals();orig.set(o,o.material)}});
+ const b=new THREE.Box3().setFromObject(obj),c=b.getCenter(new THREE.Vector3()),s=b.getSize(new THREE.Vector3());
+ obj.position.sub(c);model=new THREE.Group();model.add(obj);const k=1.6/Math.max(s.x,s.y,s.z)||1;model.scale.setScalar(k);
+ pivot.add(model);pivot.position.set(0,0,0);pivot.quaternion.identity();pivot.scale.setScalar(1);$('#scl').value=1;
+ floor.position.y=-(s.y*k/2)-.03;applyMode();
+}
+function loadFile(f){
+ const n=f.name.toLowerCase(),u=URL.createObjectURL(f),err=e=>toast('No se pudo leer el archivo: '+(e.message||'formato inválido'));
+ try{
+  if(n.endsWith('.stl'))new THREE.STLLoader().load(u,g=>{g.computeVertexNormals();setModel(new THREE.Mesh(g,new THREE.MeshStandardMaterial()))},0,err);
+  else if(n.endsWith('.obj'))new THREE.OBJLoader().load(u,setModel,0,err);
+  else new THREE.GLTFLoader().load(u,g=>setModel(g.scene),0,err);
+  toast('Cargando '+f.name+'…');
+ }catch(e){err(e)}
+}
+$('#file').onchange=e=>e.target.files[0]&&loadFile(e.target.files[0]);
+setModel(new THREE.Mesh(new THREE.TorusKnotGeometry(.6,.2,200,32),new THREE.MeshStandardMaterial()));
+
+/* ---------- Cámara ---------- */
+async function startCam(){
+ try{
+  if(stream)stream.getTracks().forEach(t=>t.stop());
+  stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:st.facing},width:{ideal:1280},height:{ideal:720}},audio:false});
+  [v1,v2].forEach(v=>{v.srcObject=stream;v.play().catch(()=>{})});
+  st.mirror=st.facing==='user';$('#mirror').checked=st.mirror;layout();setTimeout(updEnv,600);return true;
+ }catch(e){toast('No se pudo abrir la cámara ('+e.name+'). Usa HTTPS o localhost y concede el permiso.');return false}
+}
+
+/* ---------- Layout / proyección ---------- */
+function layout(){
+ W=innerWidth;H=innerHeight;R.setPixelRatio(Math.min(devicePixelRatio,2));R.setSize(W,H,false);
+ ov.width=W;ov.height=H;document.body.classList.toggle('vr',st.vr);
+ [v1,v2].forEach(v=>v.style.transform=st.mirror?'scaleX(-1)':'');
+}
+addEventListener('resize',layout);
+const cw=()=>st.vr?W/2:W;
+function toScreen(p){
+ const vw=v1.videoWidth,vh=v1.videoHeight;if(!vw)return[p.x*cw(),p.y*H];
+ const s=Math.max(cw()/vw,H/vh),dx=(cw()-vw*s)/2,dy=(H-vh*s)/2;
+ return[(st.mirror?1-p.x:p.x)*vw*s+dx,p.y*vh*s+dy];
+}
+function rayPoint(sx,sy,dist){
+ cam.aspect=cw()/H;cam.updateProjectionMatrix();cam.updateMatrixWorld();
+ const d=new THREE.Vector3(sx/cw()*2-1,-(sy/H*2-1),.5).unproject(cam).sub(cam.position).normalize();
+ return cam.position.clone().add(d.multiplyScalar(dist));
+}
+
+/* ---------- MediaPipe Hands ---------- */
+const load=s=>new Promise((res,rej)=>{const e=document.createElement('script');e.src=s;e.onload=res;e.onerror=()=>rej(new Error('sin conexión a MediaPipe'));document.head.appendChild(e)});
+const MP='https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/';
+async function initHands(){
+ if(hands)return true;toast('Cargando MediaPipe Hands…');
+ try{
+  await load(MP+'hands.js');
+  hands=new Hands({locateFile:f=>MP+f});
+  hands.setOptions({maxNumHands:2,modelComplexity:1,minDetectionConfidence:.6,minTrackingConfidence:.5});
+  hands.onResults(onRes);return true;
+ }catch(e){toast('No se pudo cargar MediaPipe: '+e.message);return false}
+}
+const D=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
+const pinchOf=h=>D(h[4],h[8])/D(h[0],h[9])<.38;
+const fistOf=h=>[[8,6],[12,10],[16,14],[20,18]].filter(p=>D(h[p[0]],h[0])<D(h[p[1]],h[0])).length>=3&&!pinchOf(h);
+const chains=[[0,1,2,3,4],[0,5,6,7,8],[5,9,10,11,12],[9,13,14,15,16],[13,17,18,19,20],[0,17]];
+function drawHands(L){
+ ox.clearRect(0,0,W,H);
+ [0,1].forEach(side=>{if(side&&!st.vr)return;ox.save();ox.translate(side*W/2,0);
+  L.forEach(h=>{
+   const P=h.map(toScreen),pin=pinchOf(h);
+   ox.beginPath();[0,1,5,9,13,17].forEach((i,k)=>k?ox.lineTo(...P[i]):ox.moveTo(...P[i]));ox.closePath();
+   ox.fillStyle='rgba(79,209,197,.16)';ox.fill();
+   ox.strokeStyle='rgba(79,209,197,.9)';ox.lineWidth=2;
+   chains.forEach(c=>{ox.beginPath();c.forEach((i,k)=>k?ox.lineTo(...P[i]):ox.moveTo(...P[i]));ox.stroke()});
+   P.forEach((p,i)=>{ox.beginPath();ox.arc(p[0],p[1],i%4==0&&i?5:3,0,7);ox.fillStyle=pin&&(i==4||i==8)?'#ffb347':'#fff';ox.fill()});
+  });ox.restore()});
+}
+const G={mode:null,prev:null,dist:3,off:new THREE.Vector3(),sz0:1,s0:1,d0:1,a0:0};
+const qa=(ax,a)=>new THREE.Quaternion().setFromAxisAngle(ax,a);
+const AX=new THREE.Vector3(1,0,0),AY=new THREE.Vector3(0,1,0),AZ=new THREE.Vector3(0,0,1);
+function onRes(r){
+ const L=r.multiHandLandmarks||[];drawHands(L);
+ const P=L.filter(pinchOf),F=L.find(fistOf);let mode=null;
+ if(L.length>1&&P.length>1)mode='two';else if(P.length)mode='move';else if(F)mode='rot';
+ const fresh=mode!==G.mode;G.mode=mode;
+ const mid=h=>({x:(h[4].x+h[8].x)/2,y:(h[4].y+h[8].y)/2});
+ if(mode==='move'){
+  const h=P[0],c=mid(h),s=toScreen(c),sz=D(h[0],h[9]);
+  if(fresh){G.dist=cam.position.distanceTo(pivot.position);G.sz0=sz;G.off.copy(pivot.position).sub(rayPoint(s[0],s[1],G.dist))}
+  const dist=Math.min(7,Math.max(1.2,G.dist*G.sz0/sz));
+  pivot.position.lerp(rayPoint(s[0],s[1],dist).add(G.off),.45);
+ }else if(mode==='rot'){
+  const p=F[9];
+  if(!fresh&&G.prev){const dx=(p.x-G.prev.x)*(st.mirror?-1:1),dy=p.y-G.prev.y;
+   pivot.quaternion.premultiply(qa(AY,dx*7)).premultiply(qa(AX,dy*7))}
+  G.prev={x:p.x,y:p.y};
+ }else if(mode==='two'){
+  const a=mid(L[0]),b=mid(L[1]),d=Math.hypot(a.x-b.x,a.y-b.y),ang=Math.atan2(b.y-a.y,b.x-a.x)*(st.mirror?-1:1);
+  if(fresh){G.s0=pivot.scale.x;G.d0=d;G.a0=ang}
+  else{let da=ang-G.a0;da=Math.atan2(Math.sin(da),Math.cos(da));pivot.quaternion.premultiply(qa(AZ,-da))}
+  G.a0=ang;pivot.scale.setScalar(Math.min(4,Math.max(.2,G.s0*d/G.d0)));$('#scl').value=pivot.scale.x;
+ }
+ if(mode!=='rot')G.prev=null;
+ $('#chip').innerHTML={move:'<b>Mover</b> · pellizco: acerca o aleja la mano',rot:'<b>Rotar</b> · puño: mueve la mano',two:'<b>Escalar y girar</b> · dos manos con pellizco'}[mode]||(L.length?'Pellizca para mover · puño para rotar':'Muestra tus manos a la cámara');
+}
+
+/* ---------- Giroscopio ---------- */
+let ev=null,base=null;const q1=new THREE.Quaternion(-Math.SQRT1_2,0,0,Math.SQRT1_2),eu=new THREE.Euler(),q0=new THREE.Quaternion(),gq=new THREE.Quaternion(),r2=Math.PI/180;
+addEventListener('deviceorientation',e=>{if(e.alpha!=null)ev=e});
+async function setGyro(on){
+ if(on&&typeof DeviceOrientationEvent!=='undefined'&&DeviceOrientationEvent.requestPermission){
+  try{if(await DeviceOrientationEvent.requestPermission()!=='granted'){on=false;toast('Permiso de movimiento denegado')}}catch(e){on=false}
+ }
+ st.gyro=on;base=null;$('#gyro').checked=on;if(!on)cam.quaternion.identity();
+}
+
+/* ---------- Bucle ---------- */
+function frame(t){
+ requestAnimationFrame(frame);
+ if(st.auto&&!G.mode)pivot.rotateY(.01);
+ if(hands&&st.manip&&!busy&&v1.readyState>1){busy=true;hands.send({image:v1}).catch(()=>{}).finally(()=>busy=false)}
+ if(st.mode==='mirror'&&t-lastEnv>700){updEnv();lastEnv=t}
+ if(st.gyro&&ev){eu.set(ev.beta*r2,ev.alpha*r2,-ev.gamma*r2,'YXZ');
+  gq.setFromEuler(eu).multiply(q1).multiply(q0.setFromAxisAngle(AZ,-(screen.orientation?screen.orientation.angle:0)*r2));
+  if(!base)base=gq.clone().invert();cam.quaternion.copy(base).multiply(gq)}
+ if(!st.vr){R.setScissorTest(false);R.setViewport(0,0,W,H);cam.aspect=W/H;cam.updateProjectionMatrix();R.render(scene,cam)}
+ else{R.setScissorTest(true);cam.aspect=W/2/H;cam.updateProjectionMatrix();cam.updateMatrixWorld();
+  [-1,1].forEach((s,i)=>{const p=cam.position.clone();cam.translateX(s*st.ipd/2);R.setViewport(i*W/2,0,W/2,H);R.setScissor(i*W/2,0,W/2,H);R.render(scene,cam);cam.position.copy(p)})}
+}
+
+/* ---------- Interfaz ---------- */
+let tt;function toast(m){const t=$('#toast');t.textContent=m;t.style.display='block';clearTimeout(tt);tt=setTimeout(()=>t.style.display='none',3800)}
+function sync(){
+ sun.intensity=st.light;const a=st.ang*r2;sun.position.set(Math.cos(a)*3,4,Math.sin(a)*3);
+ sun.castShadow=floor.visible=st.shadow;applyMode();
+}
+['#modes button'].forEach(s=>document.querySelectorAll(s).forEach(b=>b.onclick=()=>{
+ document.querySelectorAll('#modes button').forEach(x=>x.classList.toggle('on',x===b));st.mode=b.dataset.m;if(st.mode==='mirror')updEnv();sync()}));
+['color','rough','metal','light','ang','ipd'].forEach(k=>$('#'+k).oninput=e=>{st[k]=k==='color'?e.target.value:+e.target.value;if(k==='ipd')return;sync()});
+['flat','shadow','auto'].forEach(k=>$('#'+k).onchange=e=>{st[k]=e.target.checked;sync()});
+$('#scl').oninput=e=>pivot.scale.setScalar(+e.target.value);
+$('#mirror').onchange=e=>{st.mirror=e.target.checked;layout()};
+$('#gyro').onchange=e=>setGyro(e.target.checked);
+$('#flip').onclick=()=>{st.facing=st.facing==='user'?'environment':'user';startCam()};
+['#38e8c6','#ff4d6d','#ffd23f','#4d8bff','#b36bff','#f2f2f2','#ff8c42'].forEach(c=>{const i=document.createElement('i');i.style.background=c;i.onclick=()=>{st.color=c;$('#color').value=c;sync()};$('#sw').appendChild(i)});
+$('#bPan').onclick=()=>$('#panel').classList.toggle('open');
+$('#bCam').onclick=()=>startCam();
+$('#bMan').onclick=async e=>{
+ if(!st.manip){if(!stream&&!await startCam())return;if(!await initHands())return}
+ st.manip=!st.manip;e.currentTarget.classList.toggle('on',st.manip);G.mode=null;
+ if(!st.manip){ox.clearRect(0,0,W,H);$('#chip').textContent='Arrastra para rotar · rueda para escalar'}
+ else toast('Manipulación activa: sujeta el móvil o gafas y usa tus manos');
+};
+async function toggleVR(on){
+ st.vr=on;layout();
+ if(on){if(!stream)await startCam();
+  try{await document.documentElement.requestFullscreen();await screen.orientation.lock('landscape')}catch(e){}
+  if(!st.gyro)setGyro(true);$('#bVr').classList.add('on')}
+ else{try{document.fullscreenElement&&document.exitFullscreen();screen.orientation.unlock()}catch(e){}$('#bVr').classList.remove('on')}
+}
+$('#bVr').onclick=()=>toggleVR(!st.vr);$('#exit').onclick=()=>toggleVR(false);
+$('#goAR').onclick=async()=>{$('#intro').remove();await startCam()};
+$('#goNo').onclick=()=>$('#intro').remove();
+
+/* Ratón / táctil (cuando no está la manipulación con manos) */
+let drag=null;const gl=$('#gl');
+gl.onpointerdown=e=>{drag=[e.clientX,e.clientY];gl.setPointerCapture(e.pointerId)};
+gl.onpointermove=e=>{if(!drag||st.manip)return;pivot.quaternion.premultiply(qa(AY,(e.clientX-drag[0])*.01)).premultiply(qa(AX,(e.clientY-drag[1])*.01));drag=[e.clientX,e.clientY]};
+gl.onpointerup=()=>drag=null;
+gl.onwheel=e=>{const s=Math.min(3,Math.max(.2,pivot.scale.x*(e.deltaY<0?1.08:.92)));pivot.scale.setScalar(s);$('#scl').value=s};
+
+layout();sync();updEnv();requestAnimationFrame(frame);
+</script></body></html>
